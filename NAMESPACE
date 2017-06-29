@@ -1,1 +1,3 @@
+useDynLib(spheRlab, .registration=TRUE)
 exportPattern("^[[:alpha:]]+")
+importFrom(Rcpp, evalCpp)

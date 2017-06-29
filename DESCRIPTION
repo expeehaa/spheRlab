@@ -9,3 +9,5 @@ Description: An R package with numerous functions related to spherical geometry.
 LazyData: true
 Suggests: ncdf4
 License: GPL-3
+Imports: Rcpp (>= 0.12.11)
+LinkingTo: Rcpp

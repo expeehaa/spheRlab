@@ -1,4 +1,4 @@
-sl.plot.polygon <-
+sl.plot.polygon.old <-
 function (plot.init.res,lon,lat,fill=TRUE,col.fill="black",border=FALSE,col.border=col.fill,border.lwd=0.01,border.lty=1,ignore.visibility=FALSE,remove.identical.neighbours=TRUE,refine.boundary=TRUE,refine.boundary.precision=1) {
 	
 	L = length(lon)

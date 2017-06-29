@@ -22,7 +22,7 @@ function (logivec,extend=FALSE,first.only=FALSE,return.segments=TRUE) {
 			seg = f2t[1]:t2f[1]
 		}
 		if (first.only || N.seg == 1) {
-			return(seg)
+			return(list(seg))
 		} else {
 			segments = list(seg)
 			for (i in 2:N.seg) {
