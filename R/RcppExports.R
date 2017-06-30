@@ -5,7 +5,7 @@ slplotpolygon <- function(plotinitres, lon, lat, colfill = "black", colborder = 
     invisible(.Call(spheRlab_slplotpolygon, plotinitres, lon, lat, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision))
 }
 
-slplotfieldloop <- function(plotinitres, num, lonv, latv, colbar, colbarbreaks, colfill = "black", colborder = "black", colbarbreakslog = FALSE, borderlwd = 0.01, borderlty = 1L) {
-    invisible(.Call(spheRlab_slplotfieldloop, plotinitres, num, lonv, latv, colbar, colbarbreaks, colfill, colborder, colbarbreakslog, borderlwd, borderlty))
+slplotfieldloop <- function(plotinitres, lonv, latv, colbar, colind, colfill = "black", colborder = "black", borderlwd = 0.01, borderlty = 1L, threads = 2L) {
+    invisible(.Call(spheRlab_slplotfieldloop, plotinitres, lonv, latv, colbar, colind, colfill, colborder, borderlwd, borderlty, threads))
 }
 

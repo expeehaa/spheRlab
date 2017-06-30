@@ -26,29 +26,28 @@ BEGIN_RCPP
 END_RCPP
 }
 // slplotfieldloop
-void slplotfieldloop(List plotinitres, NumericVector num, NumericMatrix lonv, NumericMatrix latv, List colbar, List colbarbreaks, String colfill, String colborder, bool colbarbreakslog, double borderlwd, int borderlty);
-RcppExport SEXP spheRlab_slplotfieldloop(SEXP plotinitresSEXP, SEXP numSEXP, SEXP lonvSEXP, SEXP latvSEXP, SEXP colbarSEXP, SEXP colbarbreaksSEXP, SEXP colfillSEXP, SEXP colborderSEXP, SEXP colbarbreakslogSEXP, SEXP borderlwdSEXP, SEXP borderltySEXP) {
+void slplotfieldloop(List plotinitres, NumericMatrix lonv, NumericMatrix latv, List colbar, IntegerVector colind, String colfill, String colborder, double borderlwd, int borderlty, int threads);
+RcppExport SEXP spheRlab_slplotfieldloop(SEXP plotinitresSEXP, SEXP lonvSEXP, SEXP latvSEXP, SEXP colbarSEXP, SEXP colindSEXP, SEXP colfillSEXP, SEXP colborderSEXP, SEXP borderlwdSEXP, SEXP borderltySEXP, SEXP threadsSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< List >::type plotinitres(plotinitresSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type num(numSEXP);
     Rcpp::traits::input_parameter< NumericMatrix >::type lonv(lonvSEXP);
     Rcpp::traits::input_parameter< NumericMatrix >::type latv(latvSEXP);
     Rcpp::traits::input_parameter< List >::type colbar(colbarSEXP);
-    Rcpp::traits::input_parameter< List >::type colbarbreaks(colbarbreaksSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type colind(colindSEXP);
     Rcpp::traits::input_parameter< String >::type colfill(colfillSEXP);
     Rcpp::traits::input_parameter< String >::type colborder(colborderSEXP);
-    Rcpp::traits::input_parameter< bool >::type colbarbreakslog(colbarbreakslogSEXP);
     Rcpp::traits::input_parameter< double >::type borderlwd(borderlwdSEXP);
     Rcpp::traits::input_parameter< int >::type borderlty(borderltySEXP);
-    slplotfieldloop(plotinitres, num, lonv, latv, colbar, colbarbreaks, colfill, colborder, colbarbreakslog, borderlwd, borderlty);
+    Rcpp::traits::input_parameter< int >::type threads(threadsSEXP);
+    slplotfieldloop(plotinitres, lonv, latv, colbar, colind, colfill, colborder, borderlwd, borderlty, threads);
     return R_NilValue;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
     {"spheRlab_slplotpolygon", (DL_FUNC) &spheRlab_slplotpolygon, 11},
-    {"spheRlab_slplotfieldloop", (DL_FUNC) &spheRlab_slplotfieldloop, 11},
+    {"spheRlab_slplotfieldloop", (DL_FUNC) &spheRlab_slplotfieldloop, 10},
     {NULL, NULL, 0}
 };
 

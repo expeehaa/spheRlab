@@ -3,17 +3,19 @@ function (plot.init.res,num,lon.v,lat.v,col.fill="colbar",col.border="colbar",co
 	
 	Npoly = nrow(lon.v)
 	colbar.res = NULL
+	col.ind = NULL
 	if (col.fill == "colbar" || col.border == "colbar") {
 		colbar.res = sl.num2colbar(num,colbar,colbar.breaks,colbar.breaks.log)
 		col.ind = colbar.res$colour.index
 	}
-	for (np in 1:Npoly) {
-		cb.fill = col.fill
-		cb.border = col.border
-		if (col.fill == "colbar") {cb.fill = colbar[[col.ind[np]]]}
-		if (col.border == "colbar") {cb.border = colbar[[col.ind[np]]]}
-		slplotpolygon(plot.init.res,lon.v[np,],lat.v[np,],colfill=cb.fill,colborder=cb.border,borderlwd=border.lwd,borderlty=border.lty)
-	}
+	slplotfieldloop(plotinitres = plot.init.res,lonv = lon.v, latv = lat.v, colbar = colbar, colind = col.ind, colfill = col.fill, colborder = col.border, borderlwd = border.lwd, borderlty = border.lty, threads = (parallel::detectCores()*3)/4)
+	# for (np in 1:Npoly) {
+	# 	cb.fill = col.fill
+	# 	cb.border = col.border
+	# 	if (col.fill == "colbar") {cb.fill = colbar[[col.ind[np]]]}
+	# 	if (col.border == "colbar") {cb.border = colbar[[col.ind[np]]]}
+	# 	slplotpolygon(plot.init.res,lon.v[np,],lat.v[np,],colfill=cb.fill,colborder=cb.border,borderlwd=border.lwd,borderlty=border.lty)
+	# }
 	
 	return(colbar.res)
 }
