@@ -6,13 +6,14 @@
 using namespace Rcpp;
 
 // slplotpolygon
-void slplotpolygon(List plotinitres, NumericVector lon, NumericVector lat, String colfill, String colborder, double borderlwd, int borderlty, bool ignorevisibility, bool removeidenticalneighbours, bool refineboundary, double refineboundaryprecision);
-RcppExport SEXP spheRlab_slplotpolygon(SEXP plotinitresSEXP, SEXP lonSEXP, SEXP latSEXP, SEXP colfillSEXP, SEXP colborderSEXP, SEXP borderlwdSEXP, SEXP borderltySEXP, SEXP ignorevisibilitySEXP, SEXP removeidenticalneighboursSEXP, SEXP refineboundarySEXP, SEXP refineboundaryprecisionSEXP) {
+void slplotpolygon(PIR pir, NumericVector lon, NumericVector lat, Function polygon, String colfill, String colborder, double borderlwd, int borderlty, bool ignorevisibility, bool removeidenticalneighbours, bool refineboundary, double refineboundaryprecision);
+RcppExport SEXP spheRlab_slplotpolygon(SEXP pirSEXP, SEXP lonSEXP, SEXP latSEXP, SEXP polygonSEXP, SEXP colfillSEXP, SEXP colborderSEXP, SEXP borderlwdSEXP, SEXP borderltySEXP, SEXP ignorevisibilitySEXP, SEXP removeidenticalneighboursSEXP, SEXP refineboundarySEXP, SEXP refineboundaryprecisionSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< List >::type plotinitres(plotinitresSEXP);
+    Rcpp::traits::input_parameter< PIR >::type pir(pirSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type lon(lonSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type lat(latSEXP);
+    Rcpp::traits::input_parameter< Function >::type polygon(polygonSEXP);
     Rcpp::traits::input_parameter< String >::type colfill(colfillSEXP);
     Rcpp::traits::input_parameter< String >::type colborder(colborderSEXP);
     Rcpp::traits::input_parameter< double >::type borderlwd(borderlwdSEXP);
@@ -21,7 +22,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< bool >::type removeidenticalneighbours(removeidenticalneighboursSEXP);
     Rcpp::traits::input_parameter< bool >::type refineboundary(refineboundarySEXP);
     Rcpp::traits::input_parameter< double >::type refineboundaryprecision(refineboundaryprecisionSEXP);
-    slplotpolygon(plotinitres, lon, lat, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+    slplotpolygon(pir, lon, lat, polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
     return R_NilValue;
 END_RCPP
 }
@@ -46,7 +47,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"spheRlab_slplotpolygon", (DL_FUNC) &spheRlab_slplotpolygon, 11},
+    {"spheRlab_slplotpolygon", (DL_FUNC) &spheRlab_slplotpolygon, 12},
     {"spheRlab_slplotfieldloop", (DL_FUNC) &spheRlab_slplotfieldloop, 10},
     {NULL, NULL, 0}
 };

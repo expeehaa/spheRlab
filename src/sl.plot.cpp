@@ -1,10 +1,61 @@
 // [[Rcpp::plugins(openmp)]]
 
 #include <Rcpp.h>
+#include <stringstream>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+#ifndef DEBUG
+#define DEBUG
+#endif
 using namespace Rcpp;
+
+// [[Rcpp::export]]
+class PIR{
+  public:
+    const char * projection;
+    NumericVector lonrange, latrange, xlim, ylim;
+    int xshift, yshift;
+    std::vector<PIR> pirlist;
+    
+    int is3D() {
+      return (!strcmp(projection, "3D") || !strcmp(projection, "platon")) ? 1 : ((!strcmp(projection, "lonlat") || !strcmp(projection, "polar") || !strcmp(projection, "regpoly")) ? 0 : -1);
+    }
+    
+    PIR(const char projection[], NumericVector lonrange, NumericVector latrange, NumericVector xlim, NumericVector ylim, int xshift, int yshift) 
+      : projection(projection), lonrange(lonrange), latrange(latrange), xlim(xlim), ylim(ylim), xshift(xshift), yshift(yshift){}
+    
+    PIR(List pir){
+      projection = as<String>(pir["projection"]).get_cstring();
+      
+      if(is3D() == 1){
+        for(int i = 1; Rcpp::is<List>(pir[i]); i++){
+          pirlist.push_back(pir[i]);
+        }
+      }
+      else if(is3D() == 0){
+        lonrange = as<NumericVector>(pir["lonrange"]);
+        latrange = as<NumericVector>(pir["latrange"]);
+        xlim = as<NumericVector>(pir["xlim"]);
+        ylim = as<NumericVector>(pir["ylim"]);
+        xshift = as<int>(pir["xshift"]);
+        yshift = as<int>(pir["yshift"]);
+      }
+      else{
+        Rcpp::stop("projection type unknown!");
+      }
+    }
+};
+
+class VisShiftRot {
+  public:
+    NumericVector x, y, rotlon, rotlat;
+    LogicalVector visible;
+    
+    VisShiftRot(NumericVector x, NumericVector y, NumericVector rotlon, NumericVector rotlat, LogicalVector visible)
+      : x(x), y(y), rotlon(rotlon), rotlat(rotlat), visible(visible){}
+};
+
 
 IntegerVector which(LogicalVector lv){
   IntegerVector iv(sum(lv));
@@ -36,10 +87,8 @@ IntegerVector renumber(int lower, int upper, int step = 1){
 NumericVector removeEntries(NumericVector vec, LogicalVector logivec){
   while(logivec.length() < vec.length()) logivec[logivec.length()] = false;
   NumericVector out(sum(logivec));
-  //Rcout << "logivec sum: " << sum(logivec) << '\n';
   int counter = 0;
   for(int i = 0; i < vec.length(); i++){
-    //Rcout << logivec[i] << ", " << vec[i] << '\n';
     if(logivec[i]) out[counter++] = vec[i];
   }
   return out;
@@ -62,72 +111,177 @@ Vector<VECTYPE> cVecs(Vector<VECTYPE> vec1, Vector<VECTYPE> vec2){
   return out;
 }
 
+NumericVector cutoutVector(NumericVector vec, double minimum, double maximum){
+  NumericVector ret(vec.begin(), vec.end());
+  for(int i = 0; i < ret.length(); i++){
+    while(ret[i] > maximum) ret[i] -= maximum - minimum;
+    while(ret[i] <= minimum) ret[i] += maximum - minimum;
+  }
+  return ret;
+}
+
+IntegerVector modulo(IntegerVector vec, int n){
+  IntegerVector ret(vec.length());
+  for(int i = 0; i < vec.length(); i++)
+    ret[i] = vec[i] % n;
+  return ret;
+}
+
+
+List slsegment(LogicalVector logivec, bool extend = false, bool firstonly = false, bool segments = true){
+  int L = logivec.length();
+  IntegerVector f2t = which(!logivec & shiftleft(logivec));
+  IntegerVector t2f = which(logivec & !shiftleft(logivec));
+  
+  if (extend) t2f = modulo(t2f, L) + 1;
+  else f2t = modulo(f2t, L) + 1;
+  int Nseg = t2f.length();
+
+  if (Nseg > 1 && logivec[0]) t2f = shiftleft(t2f);
+  
+  
+  if (segments) {
+    IntegerVector seg = t2f[0] <= f2t[0] ? cVecs(renumber(f2t[0], L-1), renumber(0, t2f[0])) : renumber(f2t[0], t2f[0]-1);
+    
+    if (firstonly || Nseg == 1){
+      List ret(1);
+      ret[0] = seg;
+      return ret;
+    }
+    else {
+      List ret(Nseg);
+      ret[0] = seg;
+      for (int i = 1; i < Nseg; i++)
+        ret[i] = t2f[i] <= f2t[i] ? cVecs(renumber(f2t[i], L-1), renumber(0, t2f[i])) : renumber(f2t[i], t2f[i]-1);
+      return ret;
+    }
+  }
+  else {
+    List ret(2);
+    if(firstonly){
+      ret[0] = f2t[0] - 1;
+      ret[1] = t2f[0] - 1;
+    }
+    else {
+      ret[0] = f2t - 1;
+      ret[1] = t2f - 1;
+    }
+    return ret;
+  } 
+}
+
+LogicalVector sllonlatidentical(NumericVector lon1, NumericVector lat1, NumericVector lon2, NumericVector lat2, bool recycle = false, double tolerance = 0){
+  lon1 = cutoutVector(lon1, -180, 180);
+  lon2 = cutoutVector(lon2, -180, 180);
+  
+  IntegerVector Ls(4);
+  Ls[0] = lon1.length();
+  Ls[1] = lat1.length();
+  Ls[2] = lon2.length();
+  Ls[3] = lat2.length();
+  int L = max(Ls);
+  if(is_true(any(Ls < L))){
+    if(recycle){
+      lon1 = rep_len(lon1, L);
+      lat1 = rep_len(lat1, L);
+      lon2 = rep_len(lon2, L);
+      lat2 = rep_len(lat2, L);
+    }
+    else{
+      Rcpp::stop("input sizes do not match, consider setting 'recycle=TRUE'");
+    }
+  }
+  
+  return abs(lat1-lat2)<=tolerance & (abs(lon1-lon2)<=tolerance | abs(lat1+90)<=tolerance | abs(lat1-90)<=tolerance);
+}
+
+VisShiftRot slvisshiftrot(PIR pir, NumericVector lon, NumericVector lat){
+  NumericVector rotlon(0), rotlat(0), x(0), y(0);
+  LogicalVector visible(0);
+  
+  if (!strcmp(pir.projection, "lonlat")) {
+    lon = cutoutVector(lon, -180, 180);
+    visible = (lat>=pir.latrange[0] & lat<=pir.latrange[1] & lon>=pir.lonrange[0] & lon<=pir.lonrange[1]);
+    x = lon;
+    y = lat;
+  }
+  else Rcpp::stop("Other projections than lonlat not yet implemented!");
+  
+  VisShiftRot vsr(x, y, rotlon, rotlat, visible);
+  return vsr;
+}
+
+
 /// [[Rcpp::export("sl.plot.polygon")]]
 // [[Rcpp::export]]
-void slplotpolygon(List plotinitres, NumericVector lon, NumericVector lat, String colfill = "black", String colborder = "black", double borderlwd = 0.01, int borderlty = 1, bool ignorevisibility = false, bool removeidenticalneighbours = true, bool refineboundary = true, double refineboundaryprecision = 1){
+void slplotpolygon(PIR pir, NumericVector lon, NumericVector lat, Function polygon, String colfill = "black", String colborder = "black", double borderlwd = 0.01, int borderlty = 1, bool ignorevisibility = false, bool removeidenticalneighbours = true, bool refineboundary = true, double refineboundaryprecision = 1){
   
-  // Rcout << "polygon\n";
-  
-  Environment env("package:spheRlab");
-  Environment envGraphics("package:graphics");
-  Environment envBase("package:base");
-  Environment envGlob = Environment::global_env();
-  Function polygon = as<Function>(envGraphics["polygon"]);
+  #ifdef DEBUG
+#pragma omp critical
+Rcout << "polygon\n";
+#endif
   
   int L = lon.length();
   if(L != lat.length()) {
     Rcpp::warning("lon and lat vector do not have the same length!");
     return;
   }
-  // Rcout << "length: " << L << '\n';
-  // Rcout << removeidenticalneighbours << '\n';
+  #ifdef DEBUG
+#pragma omp critical
+Rcout << "length: " << L << '\n';
+Rcout << removeidenticalneighbours << '\n';
+#endif
   
   if(removeidenticalneighbours){
-    // Rcout << wrap(lon) << ", " << wrap(lat) << '\n';
-    Function sllonlatidentical = as<Function>(env["sl.lonlat.identical"]);
-    // Rcout << "after wrap\n";
-    LogicalVector keep = !as<LogicalVector>(sllonlatidentical(lon, lat, shiftleft(lon), shiftleft(lat)));
+    LogicalVector keep = !sllonlatidentical(lon, lat, shiftleft(lon), shiftleft(lat));
     lon = removeEntries(lon, keep);
     lat = removeEntries(lat, keep);
     L = lon.length();
   }
   
-  // Rcout << "length after 'rin': " << L << '\n';
+  #ifdef DEBUG
+#pragma omp critical
+Rcout << "length after 'rin': " << L << '\n';
+#endif
   
-  const char* projection = as<String>(plotinitres["projection"]).get_cstring();
+  #ifdef DEBUG
+#pragma omp critical
+Rcout << "projection: " << pir.projection << '\n';
+#endif
   
-  // Rcout << "projection: " << projection << '\n';
-  
-  if(!strcmp(projection, "platon") || !strcmp(projection, "3D")){
-    int npir = 1;
-    while(Rcpp::is<List>(plotinitres[npir])){
-      slplotpolygon(plotinitres[npir], lon, lat, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+  if(pir.is3D() == 1){
+    for(int npir = 0; npir < pir.pirlist.size(); npir++){
+      slplotpolygon(pir.pirlist[npir], lon, lat, polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
       npir++;
     }
   }
   
-  // Rcout << ignorevisibility << '\n';
+  #ifdef DEBUG
+#pragma omp critical
+Rcout << "ignore visibility" << ignorevisibility << '\n';
+#endif
   
-  Function slvisshiftrot = Rcpp::as<Function>(env["sl.vis.shift.rot"]);
-  List vsrres = slvisshiftrot(plotinitres, lon, lat);
-  LogicalVector visible = vsrres["visible"];
+  VisShiftRot vsrres = slvisshiftrot(pir, lon, lat);
+  LogicalVector visible = vsrres.visible;
   if(ignorevisibility) visible.fill(true);
   int vissum = sum(visible);
   if(vissum == 0) return;
   
-  // Rcout << vissum << '\n';
-  // Rcout << "vsrres: " << Rf_isNull(vsrres["rot.lon"]) << ", " << Rf_isNull(vsrres["rot.lat"]) << '\n';
+  #ifdef DEBUG
+#pragma omp critical
+Rcout << vissum << '\n';
+#endif
   
-  NumericVector x = !Rf_isNull(vsrres["x"]) ? vsrres["x"] : NumericVector::create(), 
-    y = !Rf_isNull(vsrres["y"]) ? vsrres["y"] : NumericVector::create(),
-    rotlon = !Rf_isNull(vsrres["rot.lon"]) ? vsrres["rot.lon"] : NumericVector::create(), 
-    rotlat = !Rf_isNull(vsrres["rot.lat"]) ? vsrres["rot.lat"] : NumericVector::create();
+  NumericVector x = vsrres.x, y = vsrres.y, rotlon = vsrres.rotlon, rotlat = vsrres.rotlat;
   
   bool vispartial = vissum < L ? true : false;
   
-  // Rcout << "going into if ? " << (vispartial && strcmp(projection, "lonlat")) << '\n';
+  #ifdef DEBUG
+#pragma omp critical
+Rcout << "going into if ? " << (vispartial && strcmp(pir.projection, "lonlat")) << '\n';
+#endif
   
-  if(vispartial && strcmp(projection, "lonlat")){
+  if(vispartial && strcmp(pir.projection, "lonlat")){
     LogicalVector visibleext = visible;
     visibleext[visibleext.length()] = visible[1];
     NumericVector xnew, ynew, rotlonnew, rotlatnew;
@@ -157,177 +311,209 @@ void slplotpolygon(List plotinitres, NumericVector lon, NumericVector lat, Strin
     L = x.length();
   }
   
-  // Rcout << "length: " << L << '\n';
+  #ifdef DEBUG
+#pragma omp critical
+Rcout << "length: " << L << '\n';
+#endif
   
-  double xshift = Rcpp::as<double>(plotinitres["xshift"]), yshift = Rcpp::as<double>(plotinitres["yshift"]);
-  
-  if(!strcmp(projection, "lonlat")){
-    NumericVector lonrange = as<NumericVector>(plotinitres["lonlat.lonrange"]), latrange = as<NumericVector>(plotinitres["lonlat.latrange"]);
+  if(!strcmp(pir.projection, "lonlat")){
     if(vispartial){
       
-      // Rcout << "vispartial" << '\n';
-      //get function sl.segment
-      Function slsegment = Rcpp::as<Function>(env["sl.segment"]);
+      #ifdef DEBUG
+#pragma omp critical
+Rcout << "vispartial" << '\n';
+#endif
       
       //point(s) out of west boundary
-      // Rcout << "west" << '\n';
+      #ifdef DEBUG
+#pragma omp critical
+Rcout << "west" << '\n';
+#endif
       
-      if(min(x) < lonrange[0]){
-        ListOf<IntegerVector> inds = as<ListOf<IntegerVector> >(slsegment(x>lonrange[0], _["extend"] = true));
+      if(min(x) < pir.lonrange[0]){
+        ListOf<IntegerVector> inds = slsegment(x>pir.lonrange[0], true);
         if(inds.size() > 1)
           for(int i = 1; i < inds.size(); i++)
-            slplotpolygon(plotinitres, x[inds[i]], y[inds[i]], colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
-        x = x[inds[0]-1];
-        y = y[inds[0]-1];
+            slplotpolygon(pir, x[inds[i]], y[inds[i]], polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+        x = x[inds[0]];
+        y = y[inds[0]];
         L = x.length();
-        if(x[0] < lonrange[0]){
+        if(x[0] < pir.lonrange[0]){
           if(x[1]-x[0]>180){
-            y[0] = y[1] + (lonrange[1] - x[1])/(x[0] + 360 - x[1]) * (y[0] - y[1]);
-            x[0] = lonrange[1];
+            y[0] = y[1] + (pir.lonrange[1] - x[1])/(x[0] + 360 - x[1]) * (y[0] - y[1]);
+            x[0] = pir.lonrange[1];
           }
           else{
-            y[0] = y[1] + (lonrange[0] - x[1])/(x[0] - x[1]) * (y[0] - y[1]);
-            x[0] = lonrange[0];
+            y[0] = y[1] + (pir.lonrange[0] - x[1])/(x[0] - x[1]) * (y[0] - y[1]);
+            x[0] = pir.lonrange[0];
           }
         }
-        if(x[L-1] < lonrange[1]){
+        if(x[L-1] < pir.lonrange[1]){
           if(x[L-2]-x[L-1]>180){
-            y[L-1] = y[L-2] + (lonrange[1] - x[L-2])/(x[L-1] + 360 - x[L-2]) * (y[L-1] - y[L-2]);
-            x[L-1] = lonrange[1];
+            y[L-1] = y[L-2] + (pir.lonrange[1] - x[L-2])/(x[L-1] + 360 - x[L-2]) * (y[L-1] - y[L-2]);
+            x[L-1] = pir.lonrange[1];
           }
           else{
-            y[L-1] = y[L-2] + (lonrange[0] - x[L-2])/(x[L-1] - x[L-2]) * (y[L-1] - y[L-2]);
-            x[L-1] = lonrange[0];
+            y[L-1] = y[L-2] + (pir.lonrange[0] - x[L-2])/(x[L-1] - x[L-2]) * (y[L-1] - y[L-2]);
+            x[L-1] = pir.lonrange[0];
           }
         }
       }
       
       //point(s) out of east boundary
-      // Rcout << "east" << '\n';
+      #ifdef DEBUG
+#pragma omp critical
+Rcout << "east" << '\n';
+#endif
       
-      if(max(x) > lonrange[1]){
-        ListOf<IntegerVector> inds = as<ListOf<IntegerVector> >(slsegment(x<lonrange[1], _["extend"] = true));
+      if(max(x) > pir.lonrange[1]){
+        ListOf<IntegerVector> inds = slsegment(x<pir.lonrange[1], true);
         if(inds.size() > 1)
           for(int i = 1; i < inds.size(); i++)
-            slplotpolygon(plotinitres, x[inds[i]], y[inds[i]], colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
-        x = x[inds[0]-1];
-        y = y[inds[0]-1];
+            slplotpolygon(pir, x[inds[i]], y[inds[i]], polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+        x = x[inds[0]];
+        y = y[inds[0]];
         L = x.length();
-        if (x[0] > lonrange[1]) {
+        if (x[0] > pir.lonrange[1]) {
           if (x[0]-x[1]>180) {
-            y[0] = y[1] + (lonrange[0] - x[1])/(x[0]-360 - x[1]) * (y[0] - y[1]);
-            x[0] = lonrange[0];
+            y[0] = y[1] + (pir.lonrange[0] - x[1])/(x[0]-360 - x[1]) * (y[0] - y[1]);
+            x[0] = pir.lonrange[0];
           } else {
-            y[0] = y[1] + (lonrange[1] - x[1])/(x[0] - x[1]) * (y[0] - y[1]);
-            x[0] = lonrange[0];
+            y[0] = y[1] + (pir.lonrange[1] - x[1])/(x[0] - x[1]) * (y[0] - y[1]);
+            x[0] = pir.lonrange[0];
           }
         }
-        if (x[L-1] > lonrange[1]) {
+        if (x[L-1] > pir.lonrange[1]) {
           if (x[L-1]-x[L-2]>180) {
-            y[L-1] = y[L-2] + (lonrange[0] - x[L-2])/(x[L-1]-360 - x[L-2]) * (y[L-1] - y[L-2]);
-            x[L-1] = lonrange[0];
+            y[L-1] = y[L-2] + (pir.lonrange[0] - x[L-2])/(x[L-1]-360 - x[L-2]) * (y[L-1] - y[L-2]);
+            x[L-1] = pir.lonrange[0];
           } else {
-            y[L-1] = y[L-2] + (lonrange[1] - x[L-2])/(x[L-1] - x[L-2]) * (y[L-1] - y[L-2]);
-            x[L-1] = lonrange[1];
+            y[L-1] = y[L-2] + (pir.lonrange[1] - x[L-2])/(x[L-1] - x[L-2]) * (y[L-1] - y[L-2]);
+            x[L-1] = pir.lonrange[1];
           }
         }
       }
       
       //point(s) out of south boundary
-      // Rcout << "south" << '\n';
+      #ifdef DEBUG
+#pragma omp critical
+Rcout << "south" << '\n';
+#endif
       
-      if(min(y) < latrange[0]){
-        ListOf<IntegerVector> inds = as<ListOf<IntegerVector> >(slsegment(y>latrange[1], _["extend"] = true));
+      if(min(y) < pir.latrange[0]){
+        ListOf<IntegerVector> inds = slsegment(y>pir.latrange[1], true);
         if(inds.size() > 1)
           for(int i = 1; i < inds.size(); i++)
-            slplotpolygon(plotinitres, x[inds[i]], y[inds[i]], colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
-        x = x[inds[0]-1];
-        y = y[inds[0]-1];
+            slplotpolygon(pir, x[inds[i]], y[inds[i]], polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+        x = x[inds[0]];
+        y = y[inds[0]];
         L = x.length();
-        if (y[0] < latrange[0]) {
+        if (y[0] < pir.latrange[0]) {
           if (abs(x[0]-x[1])>180) {
             x[0] += x[0]-x[1]>180 ? -360 : 360;
-            x[0] = x[1] + (latrange[0] - y[1])/(y[0] - y[1]) * (x[0] - x[1]);
-            if (x[0]<lonrange[0]) x[0] += 360;
-            if (x[0]>lonrange[1]) x[0] -= 360;
-            y[0] = latrange[0];
+            x[0] = x[1] + (pir.latrange[0] - y[1])/(y[0] - y[1]) * (x[0] - x[1]);
+            if (x[0]<pir.lonrange[0]) x[0] += 360;
+            if (x[0]>pir.lonrange[1]) x[0] -= 360;
+            y[0] = pir.latrange[0];
           } 
           else {
-            x[0] = x[1] + (latrange[0] - y[1])/(y[0] - y[1]) * (x[0] - x[1]);
-            y[0] = latrange[0];
+            x[0] = x[1] + (pir.latrange[0] - y[1])/(y[0] - y[1]) * (x[0] - x[1]);
+            y[0] = pir.latrange[0];
           }
         }
-        if (y[L-1] < latrange[0]) {
+        if (y[L-1] < pir.latrange[0]) {
           if (abs(x[L-1]-x[L-2])>180) {
             x[L-1] += x[L-1]-x[L-2]>180 ? -360 : 360;
-            x[L-1] = x[L-2] + (latrange[0] - y[L-2])/(y[L-1] - y[L-2]) * (x[L-1] - x[L-2]);
-            if (x[L-1]<lonrange[0]) x[L-1] += 360;
-            if (x[L-1]>lonrange[1]) x[L-1] -= 360;
-            y[L-1] = latrange[0];
+            x[L-1] = x[L-2] + (pir.latrange[0] - y[L-2])/(y[L-1] - y[L-2]) * (x[L-1] - x[L-2]);
+            if (x[L-1]<pir.lonrange[0]) x[L-1] += 360;
+            if (x[L-1]>pir.lonrange[1]) x[L-1] -= 360;
+            y[L-1] = pir.latrange[0];
           }
           else {
-            x[L-1] = x[L-2] + (latrange[0] - y[L-2])/(y[L-1] - y[L-2]) * (x[L-1] - x[L-2]);
-            y[L-1] = latrange[0];
+            x[L-1] = x[L-2] + (pir.latrange[0] - y[L-2])/(y[L-1] - y[L-2]) * (x[L-1] - x[L-2]);
+            y[L-1] = pir.latrange[0];
           }
         }
       }
       
       //point(s) out of north boundary
-      // Rcout << "north" << '\n';
+      #ifdef DEBUG
+#pragma omp critical
+Rcout << "north" << '\n';
+#endif
       
-      if(max(y) > latrange[1]){
-        ListOf<IntegerVector> inds = as<ListOf<IntegerVector> >(slsegment(y<latrange[1], _["extend"] = true));
+      if(max(y) > pir.latrange[1]){
+        ListOf<IntegerVector> inds = as<ListOf<IntegerVector> >(slsegment(y<pir.latrange[1], true));
+        
         if(inds.size() > 1){
           for(int i = 1; i < inds.size(); i++){
-            slplotpolygon(plotinitres, x[inds[i]], y[inds[i]], colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+            slplotpolygon(pir, x[inds[i]], y[inds[i]], polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
           }
         }
-        x = x[inds[0]-1];
-        y = y[inds[0]-1];
+        #ifdef DEBUG
+#pragma omp critical
+Rcout << "loop finished\n";
+Rcout << inds.size() << ", " << inds[0] << '\n';
+#endif
+        
+        x = x[inds[0]];
+        y = y[inds[0]];
         L = x.length();
         
-        // Rcout << "x.length: " << L << '\n';
-        
-        // Rcout << (y[0] > latrange[1]) << '\n';
-        if (y[0] > latrange[1]) {
+        #ifdef DEBUG
+#pragma omp critical
+Rcout << "x.length: " << L << '\n';
+Rcout << (y[0] > pir.latrange[1]) << '\n';
+#endif
+        if (y[0] > pir.latrange[1]) {
           if (abs(x[0]-x[1])>180) {
             x[0] += x[0]-x[1]>180 ? -360 : 360;
-            x[0] = x[1] + (latrange[1] - y[1])/(y[0] - y[1]) * (x[0] - x[1]);
-            if (x[0]<lonrange[0]) x[1] += 360;
-            if (x[0]>lonrange[1]) x[1] -= 360;
-            y[0] = latrange[1];
+            x[0] = x[1] + (pir.latrange[1] - y[1])/(y[0] - y[1]) * (x[0] - x[1]);
+            if (x[0]<pir.lonrange[0]) x[1] += 360;
+            if (x[0]>pir.lonrange[1]) x[1] -= 360;
+            y[0] = pir.latrange[1];
           } 
           else {
-            x[0] = x[1] + (latrange[1] - y[1])/(y[0] - y[1]) * (x[0] - x[1]);
-            y[0] = latrange[1];
+            x[0] = x[1] + (pir.latrange[1] - y[1])/(y[0] - y[1]) * (x[0] - x[1]);
+            y[0] = pir.latrange[1];
           }
         }
-        // Rcout << (y[L-1] > latrange[1]) << '\n';
-        if (y[L-1] > latrange[1]) {
+        #ifdef DEBUG
+#pragma omp critical
+Rcout << (y[L-1] > pir.latrange[1]) << '\n';
+#endif
+        if (y[L-1] > pir.latrange[1]) {
           if (abs(x[L-1]-x[L-2])>180) {
             x[L-1] += x[L-1]-x[L-2]>180 ? -360 : 360;
-            x[L-1] = x[L-1] + (latrange[1] - y[L-2])/(y[L-1] - y[L-2]) * (x[L-1] - x[L-2]);
-            if (x[L-1]<lonrange[0]) x[L-1] += 360;
-            if (x[L-1]>lonrange[1]) x[L-1] -= 360;
-            y[L-1] = latrange[1];
+            x[L-1] = x[L-1] + (pir.latrange[1] - y[L-2])/(y[L-1] - y[L-2]) * (x[L-1] - x[L-2]);
+            if (x[L-1]<pir.lonrange[0]) x[L-1] += 360;
+            if (x[L-1]>pir.lonrange[1]) x[L-1] -= 360;
+            y[L-1] = pir.latrange[1];
           } 
           else {
-            x[L-1] = x[L-2] + (latrange[1] - y[L-2])/(y[L-1] - y[L-2]) * (x[L-1] - x[L-2]);
-            y[L-1] = latrange[1];
+            x[L-1] = x[L-2] + (pir.latrange[1] - y[L-2])/(y[L-1] - y[L-2]) * (x[L-1] - x[L-2]);
+            y[L-1] = pir.latrange[1];
           }
         }
       }
     }
     
-    // Rcout << "after vispartial" << '\n';
+    #ifdef DEBUG
+#pragma omp critical
+Rcout << "after vispartial" << '\n';
+#endif
     if(max(x) - min(x) > 180 && max(abs(x - shiftleft(x))) > 180){
       IntegerVector l2r = which(shiftleft(x) - x > 180), r2l = which(shiftleft(x)-x<-180);
       int Nlr = l2r.length(), Nrl = r2l.length();
       if(Nlr != Nrl) {
+#pragma omp critical
         Rcpp::warning("This nasty polygon can not be plotted; it might be circular, crossing the lonlat boundary an uneven number of times, that is, it may contain one or the other pole. Consider splitting the polygon into better behaving pieces.");
         return;
       }
-      // Rcout << "Nlr > 1 ? " << (Nlr > 1) << '\n';
+      #ifdef DEBUG
+#pragma omp critical
+Rcout << "Nlr > 1 ? " << (Nlr > 1) << '\n';
+#endif
       if(Nlr > 1){
         if(l2r[0] > r2l[0]) r2l = shiftleft(r2l);
         for (int i = 1; i< Nlr; i++) {
@@ -338,12 +524,15 @@ void slplotpolygon(List plotinitres, NumericVector lon, NumericVector lat, Strin
           for(int o = 0; o < left.length(); o++)
             left[o] %= L;
           
-          slplotpolygon(plotinitres, x[left], y[left], colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
-          slplotpolygon(plotinitres, x[right], y[right], colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+          slplotpolygon(pir, x[left], y[left], polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+          slplotpolygon(pir, x[right], y[right], polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
         }
       }
       int i = 0;
-      // Rcout << "right: " << (r2l[i]%L+1 > l2r[i]) << "\nleft: " << (l2r[i%Nlr]%L+1 > r2l[i]) << '\n';
+      #ifdef DEBUG
+#pragma omp critical
+Rcout << "right: " << (r2l[i]%L+1 > l2r[i]) << "\nleft: " << (l2r[i%Nlr]%L+1 > r2l[i]) << '\n';
+#endif
       IntegerVector right = r2l[i]%L+1 > l2r[i] ? renumber(l2r[i], r2l[i]%L+1) : cVecs(renumber(l2r[i], L), renumber(1, r2l[i]%L+1));
       IntegerVector left = l2r[i%Nlr]%L+1 > r2l[i] ? renumber(r2l[i], l2r[i%Nlr]%L+1) : cVecs(renumber(r2l[i], L), renumber(1, l2r[i%Nlr]%L+1));
       for(int o = 0; o < right.length(); o++)
@@ -351,54 +540,57 @@ void slplotpolygon(List plotinitres, NumericVector lon, NumericVector lat, Strin
       for(int o = 0; o < left.length(); o++)
         left[o] %= L;
       
-      // envGlob.assign("s2x", x);
-      // envGlob.assign("s2y", y);
-      // envGlob.assign("s2r2l", r2l);
-      // envGlob.assign("s2l2r", l2r);
-      // envGlob.assign("s2L", L);
-      // envGlob.assign("s2right", right);
-      // envGlob.assign("s2left", left);
-      
       NumericVector xr = x[right], yr = y[right], xl = x[left], yl = y[left];
       int Lr = right.length(), Ll = left.length();
       
-      // Rcout << "ranges1" << '\n';
+      #ifdef DEBUG
+#pragma omp critical
+Rcout << "ranges1" << '\n';
+#endif
+      if(xr[0] < pir.lonrange[1]) xr[0] += 360;
+      yr[0] = yr[1] + (pir.lonrange[1] - xr[1])/(xr[0] - xr[1]) * (yr[0] - yr[1]);
+      xr[0] = pir.lonrange[1];
       
-      if(xr[0] < lonrange[1]) xr[0] += 360;
-      yr[0] = yr[1] + (lonrange[1] - xr[1])/(xr[0] - xr[1]) * (yr[0] - yr[1]);
-      xr[0] = lonrange[1];
+      #ifdef DEBUG
+#pragma omp critical
+Rcout << "ranges2" << '\n';
+#endif
+      if(xr[Lr-1] < pir.lonrange[1]) xr[Lr-1] += 360;
+      yr[Lr - 1] = yr[Lr-2] + (pir.lonrange[1] - xr[Lr-2])/(xr[Lr-1] - xr[Lr-2]) * (yr[Lr-1] - yr[Lr-2]);
+      xr[Lr-1] = pir.lonrange[1];
       
-      // Rcout << "ranges2" << '\n';
+      #ifdef DEBUG
+#pragma omp critical
+Rcout << "ranges3" << '\n';
+#endif
+      if (xl[0] > pir.lonrange[0]) xl[0] -= 360;
+      yl[0] = yl[1] + (pir.lonrange[0] - xl[1])/(xl[0] - xl[1]) * (yl[0] - yl[1]);
+      xl[0] = pir.lonrange[0];
       
-      if(xr[Lr-1] < lonrange[1]) xr[Lr-1] += 360;
-      yr[Lr - 1] = yr[Lr-2] + (lonrange[1] - xr[Lr-2])/(xr[Lr-1] - xr[Lr-2]) * (yr[Lr-1] - yr[Lr-2]);
-      xr[Lr-1] = lonrange[1];
-      
-      // Rcout << "ranges3" << '\n';
-      
-      if (xl[0] > lonrange[0]) xl[0] -= 360;
-      yl[0] = yl[1] + (lonrange[0] - xl[1])/(xl[0] - xl[1]) * (yl[0] - yl[1]);
-      xl[0] = lonrange[0];
-      
-      // Rcout << "ranges4" << '\n';
-      
-      if (xl[Ll - 1] > lonrange[0]) xl[Ll-1] -= 360;
-      yl[Ll - 1] = yl[Ll-2] + (lonrange[0] - xl[Ll-2])/(xl[Ll-1] - xl[Ll-2]) * (yl[Ll-1] - yl[Ll-2]);
-      xl[Ll-1] = lonrange[0];
-      
-      // Rcout << "plot polygons" << '\n';
+      #ifdef DEBUG
+#pragma omp critical
+Rcout << "ranges4" << '\n';
+#endif
+      if (xl[Ll - 1] > pir.lonrange[0]) xl[Ll-1] -= 360;
+      yl[Ll - 1] = yl[Ll-2] + (pir.lonrange[0] - xl[Ll-2])/(xl[Ll-1] - xl[Ll-2]) * (yl[Ll-1] - yl[Ll-2]);
+      xl[Ll-1] = pir.lonrange[0];
       
       #pragma omp critical
       {
-        polygon(_["x"] = xr+xshift, _["y"] = yr+yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
-        polygon(_["x"] = xl+xshift, _["y"] = yl+yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
+#ifdef DEBUG
+Rcout << "plot polygons" << '\n';
+#endif
+        // polygon(_["x"] = xr+pir.xshift, _["y"] = yr+pir.yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
+        // polygon(_["x"] = xl+pir.xshift, _["y"] = yl+pir.yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
       }
     }
     else {
       #pragma omp critical
       {
-        // Rcout << "just plot" << '\n';
-        polygon(_["x"] = x+xshift, _["y"] = y+yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
+#ifdef DEBUG
+Rcout << "just plot" << '\n';
+#endif
+        // polygon(_["x"] = x+pir.xshift, _["y"] = y+pir.yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
       }
     }
   }
@@ -410,21 +602,30 @@ void slplotpolygon(List plotinitres, NumericVector lon, NumericVector lat, Strin
 /// [[Rcpp::export(".sl.plot.field.loop")]]
 // [[Rcpp::export]]
 void slplotfieldloop(List plotinitres, NumericMatrix lonv, NumericMatrix latv, List colbar, IntegerVector colind, String colfill = "black", String colborder = "black", double borderlwd = 0.01, int borderlty = 1, int threads = 2) {
-  // Rcout << "got into c++ for loop\n";
-  // Rcout << colind.length() << ", " << max(colind) << ", " << colbar.size();
-  #ifdef _OPENMP
-  //setenv("OMP_STACKSIZE","100M",1);
-  omp_set_num_threads(1);
-  #pragma omp parallel for shared(plotinitres, lonv, latv, colbar, colind, colfill, colborder, borderlwd, borderlty) schedule(dynamic, 10)
-  #endif
+  #ifdef DEBUG
+#pragma omp critical
+Rcout << "got into c++ for loop\n" << colind.length() << ", " << max(colind) << ", " << colbar.size() << '\n';
+#endif
+  
+  Environment env("package:graphics");
+  Function polygon = as<Function>(env["polygon"]);
+  PIR pir(plotinitres);
+
+#ifdef _OPENMP
+//setenv("OMP_STACKSIZE","100M",1);
+omp_set_num_threads(2);
+#pragma omp parallel for shared(pir, colfill, colborder, borderlwd, borderlty, polygon, lonv, latv, colbar, colind) schedule(dynamic)
+#endif
   for(int i = 0; i < lonv.rows(); i++){
-    #ifdef _OPENMP
-    Rcout << omp_get_thread_num() << ": " << i << '\n';
-    #endif
-    #ifndef _OPENMP
-    Rcout << i << '\n';
-    #endif
-    String cbfill = colfill == "colbar" ? colbar[colind[i]-1] : colfill, cbborder = colborder == "colbar" ? colbar[colind[i]-1] : colborder;
-    slplotpolygon(plotinitres, lonv(i, _), latv(i, _), cbfill, cbborder, borderlwd, borderlty);
+#ifdef _OPENMP
+#pragma omp critical
+Rcout << omp_get_thread_num() << ": " << i << '\n';
+#endif
+#ifndef _OPENMP
+#pragma omp critical
+Rcout << i << '\n';
+#endif
+    
+    slplotpolygon(pir, lonv(i, _), latv(i, _), polygon, colfill == "colbar" ? colbar[colind[i]-1] : colfill, colborder == "colbar" ? colbar[colind[i]-1] : colborder, borderlwd, borderlty);
   }
 }

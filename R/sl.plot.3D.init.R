@@ -19,5 +19,4 @@ function(file.name="~/sl.plot.pdf",projection="polar",width=30,lonlatrot.left=c(
 	par(mar=rep(0,4))
 	plot(x=NULL,xlim=xlim,ylim=ylim,xlab="",ylab="",main="",xaxs="i",yaxs="i",xaxt="n",yaxt="n",bty="n",bg="white")
 	return(pir.list)
-	
 }
