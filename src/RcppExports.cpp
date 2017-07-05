@@ -6,11 +6,11 @@
 using namespace Rcpp;
 
 // slplotpolygon
-void slplotpolygon(PIR pir, NumericVector lon, NumericVector lat, Function polygon, String colfill, String colborder, double borderlwd, int borderlty, bool ignorevisibility, bool removeidenticalneighbours, bool refineboundary, double refineboundaryprecision);
-RcppExport SEXP spheRlab_slplotpolygon(SEXP pirSEXP, SEXP lonSEXP, SEXP latSEXP, SEXP polygonSEXP, SEXP colfillSEXP, SEXP colborderSEXP, SEXP borderlwdSEXP, SEXP borderltySEXP, SEXP ignorevisibilitySEXP, SEXP removeidenticalneighboursSEXP, SEXP refineboundarySEXP, SEXP refineboundaryprecisionSEXP) {
+void slplotpolygon(List pir, NumericVector lon, NumericVector lat, Function polygon, String colfill, String colborder, double borderlwd, int borderlty, bool ignorevisibility, bool removeidenticalneighbours, bool refineboundary, double refineboundaryprecision);
+RcppExport SEXP _spheRlab_slplotpolygon(SEXP pirSEXP, SEXP lonSEXP, SEXP latSEXP, SEXP polygonSEXP, SEXP colfillSEXP, SEXP colborderSEXP, SEXP borderlwdSEXP, SEXP borderltySEXP, SEXP ignorevisibilitySEXP, SEXP removeidenticalneighboursSEXP, SEXP refineboundarySEXP, SEXP refineboundaryprecisionSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< PIR >::type pir(pirSEXP);
+    Rcpp::traits::input_parameter< List >::type pir(pirSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type lon(lonSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type lat(latSEXP);
     Rcpp::traits::input_parameter< Function >::type polygon(polygonSEXP);
@@ -28,7 +28,7 @@ END_RCPP
 }
 // slplotfieldloop
 void slplotfieldloop(List plotinitres, NumericMatrix lonv, NumericMatrix latv, List colbar, IntegerVector colind, String colfill, String colborder, double borderlwd, int borderlty, int threads);
-RcppExport SEXP spheRlab_slplotfieldloop(SEXP plotinitresSEXP, SEXP lonvSEXP, SEXP latvSEXP, SEXP colbarSEXP, SEXP colindSEXP, SEXP colfillSEXP, SEXP colborderSEXP, SEXP borderlwdSEXP, SEXP borderltySEXP, SEXP threadsSEXP) {
+RcppExport SEXP _spheRlab_slplotfieldloop(SEXP plotinitresSEXP, SEXP lonvSEXP, SEXP latvSEXP, SEXP colbarSEXP, SEXP colindSEXP, SEXP colfillSEXP, SEXP colborderSEXP, SEXP borderlwdSEXP, SEXP borderltySEXP, SEXP threadsSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< List >::type plotinitres(plotinitresSEXP);
@@ -47,8 +47,8 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"spheRlab_slplotpolygon", (DL_FUNC) &spheRlab_slplotpolygon, 12},
-    {"spheRlab_slplotfieldloop", (DL_FUNC) &spheRlab_slplotfieldloop, 10},
+    {"_spheRlab_slplotpolygon", (DL_FUNC) &_spheRlab_slplotpolygon, 12},
+    {"_spheRlab_slplotfieldloop", (DL_FUNC) &_spheRlab_slplotfieldloop, 10},
     {NULL, NULL, 0}
 };
 
