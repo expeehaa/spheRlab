@@ -9,5 +9,5 @@ Description: An R package for spherical geometry, analysis, and plotting of geos
 LazyData: true
 Suggests: ncdf4, rgdal
 License: GPL-3
-Imports: Rcpp (>= 0.12.11), graphics
+Imports: Rcpp (>= 0.12.11)
 LinkingTo: Rcpp
