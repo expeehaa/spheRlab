@@ -1,11 +1,13 @@
 // [[Rcpp::plugins(openmp)]]
-#include <Rcpp.h>
+// [[Rcpp::depends(RcppArmadillo)]]
+#include <RcppArmadillo.h>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 //#define DEBUG
 #define PLOTPOLYGONS
 using namespace Rcpp;
+using namespace arma;
 
 class PIR{
 public:
@@ -113,6 +115,12 @@ NumericVector removeEntries(const NumericVector& vec, LogicalVector& logivec){
 
 double abs(double v){
   return v < 0 ? -v : v;
+}
+
+template<int VECTYPE>
+Vector<VECTYPE> abs(Vector<VECTYPE> vec){
+  vec[vec<0] = -vec[vec<0];
+  return vec;
 }
 
 template <int VECTYPE>
@@ -232,7 +240,7 @@ VisShiftRot::VisShiftRot(const PIR& pir, const NumericVector& lon, const Numeric
 }
 
 
-void slplotpolygon(const PIR& plotinitres, const NumericVector& longitude, const NumericVector& latitude, const Function& polygon, const String& colfill = "black", const String& colborder = "black", const double borderlwd = 0.01, const int& borderlty = 1, const bool& ignorevisibility = false, const bool& removeidenticalneighbours = true, const bool& refineboundary = true, const double& refineboundaryprecision = 1){
+void slplotpolygon(PIR plotinitres, NumericVector longitude, NumericVector latitude, Function polygon, String colfill = "black", String colborder = "black", double borderlwd = 0.01, int borderlty = 1, bool ignorevisibility = false, bool removeidenticalneighbours = true, bool refineboundary = true, double refineboundaryprecision = 1){
   PIR pir(plotinitres);
   NumericVector lon = longitude, lat = latitude;
   
@@ -300,26 +308,26 @@ void slplotpolygon(const PIR& plotinitres, const NumericVector& longitude, const
   if(vispartial && pir.projection != "lonlat"){
     LogicalVector visibleext = visible;
     visibleext[visibleext.length()] = visible[1];
-    NumericVector xnew, ynew, rotlonnew, rotlatnew;
+    NumericVector xnew(0), ynew(0), rotlonnew(0), rotlatnew(0);
     int i = 0;
     while(!(!visibleext[i] && visibleext[i+1])) i++;
     do {
-      xnew[xnew.length()] = x[i];
-      ynew[ynew.length()] = y[i];
-      rotlonnew[rotlonnew.length()] = rotlon[i];
-      rotlatnew[rotlatnew.length()] = rotlat[i];
+      xnew.push_back(x[i]);
+      ynew.push_back(y[i]);
+      rotlonnew.push_back(rotlon[i]);
+      rotlatnew.push_back(rotlat[i]);
       i = (i % L) + 1;
     }
     while(!(!visibleext[i] && visibleext[i+1]));
-    xnew[xnew.length()] = x[i];
-    ynew[ynew.length()] = y[i];
-    rotlonnew[rotlonnew.length()] = rotlon[i];
-    rotlatnew[rotlatnew.length()] = rotlat[i];
+    xnew.push_back(x[i]);
+    ynew.push_back(y[i]);
+    rotlonnew.push_back(rotlon[i]);
+    rotlatnew.push_back(rotlat[i]);
     i = (i % L) + 1;
-    xnew[xnew.length()] = x[i];
-    ynew[ynew.length()] = y[i];
-    rotlonnew[rotlonnew.length()] = rotlon[i];
-    rotlatnew[rotlatnew.length()] = rotlat[i];
+    xnew.push_back(x[i]);
+    ynew.push_back(y[i]);
+    rotlonnew.push_back(rotlon[i]);
+    rotlatnew.push_back(rotlat[i]);
     x = xnew;
     y = ynew;
     rotlon = rotlonnew;
@@ -594,11 +602,6 @@ void slplotpolygon(const PIR& plotinitres, const NumericVector& longitude, const
       #ifdef PLOTPOLYGONS
       #pragma omp critical
       {
-        #ifdef DEBUG
-        Rcout << "plot polygons" << '\n';
-        #endif
-        
-        
         polygon(_["x"] = xr+pir.xshift, _["y"] = yr+pir.yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
         polygon(_["x"] = xl+pir.xshift, _["y"] = yl+pir.yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
       }
@@ -609,12 +612,7 @@ void slplotpolygon(const PIR& plotinitres, const NumericVector& longitude, const
     else {
       #ifdef PLOTPOLYGONS
       #pragma omp critical
-      {
-        #ifdef DEBUG
-        Rcout << "just plot" << '\n';
-        #endif
-        polygon(_["x"] = x+pir.xshift, _["y"] = y+pir.yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
-      }
+      polygon(_["x"] = x+pir.xshift, _["y"] = y+pir.yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
       #endif
       return;
     }
@@ -631,41 +629,20 @@ void slplotpolygon(List pir, NumericVector lon, NumericVector lat, Function poly
 }
 
 // [[Rcpp::export(".sl.plot.field.loop")]]
-void slplotfieldloop(List plotinitres, NumericMatrix lonv, NumericMatrix latv, List colbar, IntegerVector colind, String colfill = "black", String colborder = "black", double borderlwd = 0.01, int borderlty = 1, int threads = 1) {
-  #ifdef DEBUG
-  Rcout << "got into c++ for loop\n" << colind.length() << ", " << max(colind) << ", " << colbar.size() << '\n';
-  #endif
-  
+void slplotfieldloop(List plotinitres, arma::mat lonv, arma::mat latv, List colbar, IntegerVector colind, String colfill = "black", String colborder = "black", double borderlwd = 0.01, int borderlty = 1, int threads = 1) {
+  rowvec vectora = lonv.row(0);
+  Rcout << "got into c++ for loop\n" << lonv.n_rows << ", " << latv.n_rows << ", " << threads << '\n';
   Environment env("package:graphics");
   Function polygon = as<Function>(env["polygon"]);
   PIR pir(plotinitres);
-  //NumericVector lon, lat;
 
   #ifdef _OPENMP
   //setenv("OMP_STACKSIZE","100M",1);
   omp_set_num_threads(threads);
   #pragma omp parallel for schedule(dynamic) ordered//shared(lonv, latv)
   #endif
-  for(int i = 0; i < lonv.rows(); i++){
-    #ifdef DEBUG
-    #ifdef _OPENMP
-    #pragma omp critical
-    Rcout << omp_get_thread_num() << ": " << i << '\n';
-    #endif
-    #ifndef _OPENMP
-    #pragma omp critical
-    Rcout << i << '\n';
-    #endif
-    #endif
-    
-    NumericVector lon, lat;
-    
-    #pragma omp critical
-    lon = lonv(i, _);
-    #pragma omp critical
-    lat = latv(i, _);
-    
-    slplotpolygon(pir, lon, lat, polygon, colfill == "colbar" ? colbar[colind[i]-1] : colfill, colborder == "colbar" ? colbar[colind[i]-1] : colborder, borderlwd, borderlty);
+  for(uword i = 0; i < lonv.n_rows; i++){
+    rowvec lon(lonv.row(i)), lat(latv.row(i));
+    slplotpolygon(pir, NumericVector(lon.begin(), lon.end()), NumericVector(lat.begin(), lat.end()), polygon, colfill == "colbar" ? colbar[colind[i]-1] : colfill, colborder == "colbar" ? colbar[colind[i]-1] : colborder, borderlwd, borderlty);
   }
-#pragma omp barrier
 }
