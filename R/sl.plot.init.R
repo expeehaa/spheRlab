@@ -57,6 +57,7 @@ function (projection="lonlat",lonlat.lonrange=c(-180,180),lonlat.latrange=c(-85,
 	if (do.init) {
 		height = width * (ylim[2]-ylim[1]) / (xlim[2]-xlim[1])
 		pdf(file.name,width,height)
+		# x11(title = "Plotto", width = 16, height = 9)
 		par(mar=rep(0,4))
 		plot(x=NULL,xlim=xlim,ylim=ylim,xlab=xlab,ylab=ylab,main=main,xaxs="i",yaxs="i",xaxt="n",yaxt="n",bty="n",bg=col.background)
 	}

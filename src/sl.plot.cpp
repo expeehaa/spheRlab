@@ -1,13 +1,13 @@
 // [[Rcpp::plugins(openmp)]]
-// [[Rcpp::depends(RcppArmadillo)]]
-#include <RcppArmadillo.h>
-#ifdef _OPENMP
-#include <omp.h>
-#endif
-//#define DEBUG
+#include <Rcpp.h>
+#include <R.h>
+#include <R_ext/GraphicsEngine.h>
+// #ifdef _OPENMP
+// #include <omp.h>
+// #endif
+// #define DEBUG
 #define PLOTPOLYGONS
 using namespace Rcpp;
-using namespace arma;
 
 class PIR{
 public:
@@ -221,28 +221,55 @@ LogicalVector sllonlatidentical(NumericVector lon1, NumericVector lat1, NumericV
 }
 
 VisShiftRot::VisShiftRot(const PIR& pir, const NumericVector& lon, const NumericVector& lat){
-  NumericVector rotlon(0), rotlat(0), x(0), y(0);
-  LogicalVector visible(0);
+  NumericVector rotlon2(0), rotlat2(0), x2(0), y2(0);
+  LogicalVector visible2(0);
   
   if (pir.projection == "lonlat") {
     NumericVector lon1 = cutoutVector(lon, -180, 180);
-    visible = (lat>=pir.latrange[0] & lat<=pir.latrange[1] & lon1>=pir.lonrange[0] & lon1<=pir.lonrange[1]);
-    x = lon1;
-    y = lat;
+    visible2 = (lat>=pir.latrange[0] & lat<=pir.latrange[1] & lon1>=pir.lonrange[0] & lon1<=pir.lonrange[1]);
+    x2 = lon1;
+    y2 = lat;
   }
   else Rcpp::stop("Other projections than lonlat not yet implemented!");
   
-  this->x = x;
-  this->y = y;
-  this->rotlon = rotlon;
-  this->rotlat = rotlat;
-  this->visible = visible;
+  this->x = x2;
+  this->y = y2;
+  this->rotlon = rotlon2;
+  this->rotlat = rotlat2;
+  this->visible = visible2;
+}
+
+void polygonplot(NumericVector x, NumericVector y, String col, String border, double lwd, int lty){
+  const void *vmax = vmaxget();
+  
+  pGEDevDesc device = GEcurrentDevice();
+  int n = x.length();
+  
+  R_GE_gcontext gc;
+  gc.lty = lty;
+  gc.lwd = lwd;
+  gc.col = R_GE_str2col(border.get_cstring());
+  gc.fill = R_GE_str2col(col.get_cstring());
+  
+  double xx[n], yy[n];
+  
+  for(int i = 0; i < n; i++){
+    xx[i] = x[i];
+    yy[i] = y[i];
+    // xx[i] = GEtoDeviceWidth(x[i], (GEUnit) 12, device);
+    // yy[i] = GEtoDeviceHeight(y[i], (GEUnit) 12, device);
+  }
+  
+  Rcout << x << ", " << y << '\n';
+  GEPolygon(n, xx, yy, &gc, device);
+  vmaxset(vmax);
 }
 
 
-void slplotpolygon(PIR plotinitres, NumericVector longitude, NumericVector latitude, Function polygon, String colfill = "black", String colborder = "black", double borderlwd = 0.01, int borderlty = 1, bool ignorevisibility = false, bool removeidenticalneighbours = true, bool refineboundary = true, double refineboundaryprecision = 1){
+void slplotpolygon(PIR plotinitres, NumericVector lon, NumericVector lat, String colfill = "black", String colborder = "black", double borderlwd = 0.01, int borderlty = 1, bool ignorevisibility = false, bool removeidenticalneighbours = true, bool refineboundary = true, double refineboundaryprecision = 1){
   PIR pir(plotinitres);
-  NumericVector lon = longitude, lat = latitude;
+  
+  Rcout << "polygon: " << lon << ", " << lat << '\n';
   
   #ifdef DEBUG
   #pragma omp critical
@@ -251,7 +278,7 @@ void slplotpolygon(PIR plotinitres, NumericVector longitude, NumericVector latit
   //
   int L = lon.length();
   if(L != lat.length()) {
-    Rcpp::warning("lon and lat vector do not have the same length!");
+    Rcpp::stop("lon and lat vector do not have the same length!");
     return;
   }
   #ifdef DEBUG
@@ -275,7 +302,7 @@ void slplotpolygon(PIR plotinitres, NumericVector longitude, NumericVector latit
   
   if(pir.is3D() == 1){
     for(int npir = 0; npir < pir.pirlist.size(); npir++){
-      slplotpolygon(pir.pirlist[npir], lon, lat, polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+      slplotpolygon(pir.pirlist[npir], lon, lat, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
       npir++;
     }
   }
@@ -358,7 +385,7 @@ void slplotpolygon(PIR plotinitres, NumericVector longitude, NumericVector latit
         ListOf<IntegerVector> inds = slsegment(x>pir.lonrange[0], true);
         if(inds.size() > 1)
           for(int i = 1; i < inds.size(); i++)
-            slplotpolygon(pir, x[inds[i]], y[inds[i]], polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+            slplotpolygon(pir, x[inds[i]], y[inds[i]], colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
         x = x[inds[0]];
         y = y[inds[0]];
         L = x.length();
@@ -394,7 +421,7 @@ void slplotpolygon(PIR plotinitres, NumericVector longitude, NumericVector latit
         ListOf<IntegerVector> inds = slsegment(x<pir.lonrange[1], true);
         if(inds.size() > 1)
           for(int i = 1; i < inds.size(); i++)
-            slplotpolygon(pir, x[inds[i]], y[inds[i]], polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+            slplotpolygon(pir, x[inds[i]], y[inds[i]], colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
         x = x[inds[0]];
         y = y[inds[0]];
         L = x.length();
@@ -428,7 +455,7 @@ void slplotpolygon(PIR plotinitres, NumericVector longitude, NumericVector latit
         ListOf<IntegerVector> inds = slsegment(y>pir.latrange[1], true);
         if(inds.size() > 1)
           for(int i = 1; i < inds.size(); i++)
-            slplotpolygon(pir, x[inds[i]], y[inds[i]], polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+            slplotpolygon(pir, x[inds[i]], y[inds[i]], colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
         x = x[inds[0]];
         y = y[inds[0]];
         L = x.length();
@@ -471,7 +498,7 @@ void slplotpolygon(PIR plotinitres, NumericVector longitude, NumericVector latit
         
         if(inds.size() > 1){
           for(int i = 1; i < inds.size(); i++){
-            slplotpolygon(pir, x[inds[i]], y[inds[i]], polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+            slplotpolygon(pir, x[inds[i]], y[inds[i]], colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
           }
         }
         #ifdef DEBUG
@@ -548,8 +575,8 @@ void slplotpolygon(PIR plotinitres, NumericVector longitude, NumericVector latit
           for(int o = 0; o < left.length(); o++)
             left[o] %= L;
           
-          slplotpolygon(pir, x[left], y[left], polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
-          slplotpolygon(pir, x[right], y[right], polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+          slplotpolygon(pir, x[left], y[left], colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+          slplotpolygon(pir, x[right], y[right], colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
         }
       }
       int i = 0;
@@ -602,8 +629,8 @@ void slplotpolygon(PIR plotinitres, NumericVector longitude, NumericVector latit
       #ifdef PLOTPOLYGONS
       #pragma omp critical
       {
-        polygon(_["x"] = xr+pir.xshift, _["y"] = yr+pir.yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
-        polygon(_["x"] = xl+pir.xshift, _["y"] = yl+pir.yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
+        polygonplot(xr+pir.xshift, yr+pir.yshift, colfill, colborder, borderlwd, borderlty);
+        polygonplot(xl+pir.xshift, yl+pir.yshift, colfill, colborder, borderlwd, borderlty);
       }
       #endif
       
@@ -612,7 +639,7 @@ void slplotpolygon(PIR plotinitres, NumericVector longitude, NumericVector latit
     else {
       #ifdef PLOTPOLYGONS
       #pragma omp critical
-      polygon(_["x"] = x+pir.xshift, _["y"] = y+pir.yshift, _["col"] = colfill, _["lwd"] = borderlwd, _["lty"] = borderlty, _["border"] = colborder);
+      polygonplot(x+pir.xshift, y+pir.yshift, colfill, colborder, borderlwd, borderlty);
       #endif
       return;
     }
@@ -623,26 +650,23 @@ void slplotpolygon(PIR plotinitres, NumericVector longitude, NumericVector latit
 }
 
 // [[Rcpp::export("sl.plot.polygon")]]
-void slplotpolygon(List pir, NumericVector lon, NumericVector lat, Function polygon, String colfill = "black", String colborder = "black", double borderlwd = 0.01, int borderlty = 1, bool ignorevisibility = false, bool removeidenticalneighbours = true, bool refineboundary = true, double refineboundaryprecision = 1){
+void slplotpolygon(List pir, NumericVector lon, NumericVector lat, String colfill = "black", String colborder = "black", double borderlwd = 0.01, int borderlty = 1, bool ignorevisibility = false, bool removeidenticalneighbours = true, bool refineboundary = true, double refineboundaryprecision = 1){
   PIR pir2(pir);
-  slplotpolygon(pir2, lon, lat, polygon, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
+  slplotpolygon(pir2, lon, lat, colfill, colborder, borderlwd, borderlty, ignorevisibility, removeidenticalneighbours, refineboundary, refineboundaryprecision);
 }
 
 // [[Rcpp::export(".sl.plot.field.loop")]]
-void slplotfieldloop(List plotinitres, arma::mat lonv, arma::mat latv, List colbar, IntegerVector colind, String colfill = "black", String colborder = "black", double borderlwd = 0.01, int borderlty = 1, int threads = 1) {
-  rowvec vectora = lonv.row(0);
-  Rcout << "got into c++ for loop\n" << lonv.n_rows << ", " << latv.n_rows << ", " << threads << '\n';
-  Environment env("package:graphics");
-  Function polygon = as<Function>(env["polygon"]);
+void slplotfieldloop(List plotinitres, NumericMatrix lonv, NumericMatrix latv, List colbar, IntegerVector colind, String colfill = "black", String colborder = "black", double borderlwd = 0.01, int borderlty = 1, int threads = 1) {
   PIR pir(plotinitres);
-
-  #ifdef _OPENMP
-  //setenv("OMP_STACKSIZE","100M",1);
-  omp_set_num_threads(threads);
-  #pragma omp parallel for schedule(dynamic) ordered//shared(lonv, latv)
-  #endif
-  for(uword i = 0; i < lonv.n_rows; i++){
-    rowvec lon(lonv.row(i)), lat(latv.row(i));
-    slplotpolygon(pir, NumericVector(lon.begin(), lon.end()), NumericVector(lat.begin(), lat.end()), polygon, colfill == "colbar" ? colbar[colind[i]-1] : colfill, colborder == "colbar" ? colbar[colind[i]-1] : colborder, borderlwd, borderlty);
+  
+  // #ifdef _OPENMP
+  // omp_set_num_threads(1);
+  // #pragma omp parallel for
+  // #endif
+  for(int i = 0; i < lonv.rows(); i++){
+    // #ifdef DEBUG
+    Rcout << i << '\n';
+    // #endif
+    slplotpolygon(pir, lonv(i, _), latv(i, _), colfill == "colbar" ? colbar[colind[i]-1] : colfill, colborder == "colbar" ? colbar[colind[i]-1] : colborder, borderlwd, borderlty);
   }
 }

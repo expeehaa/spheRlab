@@ -8,7 +8,7 @@ function (plot.init.res,num,lon.v,lat.v,col.fill="colbar",col.border="colbar",co
 		colbar.res = sl.num2colbar(num,colbar,colbar.breaks,colbar.breaks.log)
 		col.ind = colbar.res$colour.index
 	}
-	.sl.plot.field.loop(plotinitres = plot.init.res,lonv = lon.v, latv = lat.v, colbar = colbar, colind = col.ind, colfill = col.fill, colborder = col.border, borderlwd = border.lwd, borderlty = border.lty)
+	.sl.plot.field.loop(plotinitres = plot.init.res,lonv = lon.v, latv = lat.v, colbar = colbar, colind = col.ind, colfill = col.fill, colborder = col.border, borderlwd = border.lwd, borderlty = border.lty, threads=threads)
 	# for (np in 1:Npoly) {
 	# 	cb.fill = col.fill
 	# 	cb.border = col.border

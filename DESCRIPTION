@@ -10,4 +10,4 @@ LazyData: true
 Suggests: ncdf4, rgdal
 License: GPL-3
 Imports: Rcpp (>= 0.12.11)
-LinkingTo: Rcpp, RcppArmadillo
+LinkingTo: Rcpp
